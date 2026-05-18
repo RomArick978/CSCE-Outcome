@@ -6,36 +6,39 @@
 
 | Field | Value |
 |-------|-------|
-| **Project Idea** | _Awaiting user input_ |
+| **Project Idea** | Minimal full-stack demo with frontend + backend deployment |
 | **User Level** | beginner |
 | **Created** | 2026-02-07 |
-| **Last Updated** | 2026-02-07 12:40 |
+| **Last Updated** | 2026-05-18 |
 
 ## 🏗️ Current Stack
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **Frontend** | ⬜ Not started | - |
-| **Backend** | ⬜ Not started | - |
-| **Database** | ⬜ Not started | - |
+| **Frontend** | ✅ Ready | Vanilla static SPA with fetch to backend |
+| **Backend** | ✅ Ready | Node.js Express backend with /health endpoint |
+| **Database** | ⬜ Not started | No database configured |
 
 ## 🚀 Deployment Status
 
 | Field | Value |
 |-------|-------|
 | **Status** | ⬜ Not deployed |
-| **URL** | _Will be: https://dd-template-repository.vibe.intranet.cnb_ |
+| **URL** | _Will be: https://controlbridge.vibe.intranet.cnb_ |
 | **Last Deploy** | - |
 
 ---
 
 ## ✅ Completed Tasks
 
-_No tasks completed yet._
+- Added `frontend/Dockerfile` and `backend/Dockerfile` from template sources
+- Added minimal frontend SPA with `/health` support via nginx
+- Added Node.js backend with `/health` and `/hello` routes
+- Updated project status and deployment readiness documentation
 
 ## 🔄 Currently In Progress
 
-_Nothing in progress._
+- Validate deployment readiness with platform preflight checks
 
 ## 📋 Planned / Discussed
 
