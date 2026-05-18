@@ -1,0 +1,253 @@
+# =============================================================================
+# Vibe Coded Project Deployment Workflow
+# =============================================================================
+# ECS deployment only. Static (DevOps Docs) deployment is disabled until
+# we have more info / own-AWS static hosting.
+#
+# Triggers:
+#   - After CodeQL security scan completes on main/master
+#   - Push-triggered CodeQL: deploy if passed, block if failed
+#   - Schedule-triggered CodeQL: skip deploy; if failed, stop containers
+#
+# URL: https://<repo-name>.vibe.intranet.cnb
+# =============================================================================
+
+name: Deploy Vibe Project
+
+on:
+  workflow_run:
+    workflows: ["CodeQL"]
+    branches: [main, master]
+    types: [completed]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gate: only proceed when push-triggered CodeQL passed and not template repo
+  # ---------------------------------------------------------------------------
+  gate:
+    name: Check deployment conditions
+    runs-on: ubuntu-latest
+    outputs:
+      should-deploy: ${{ steps.check.outputs.should-deploy }}
+      codeql-failed-on-schedule: ${{ steps.check.outputs.codeql-failed-on-schedule }}
+    steps:
+      - name: Check conditions
+        id: check
+        run: |
+          REPO="${{ github.repository }}"
+          EVENT="${{ github.event_name }}"
+          CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+          TRIGGER_EVENT="${{ github.event.workflow_run.event }}"
+          ACTOR="${{ github.actor }}"
+          REASON=""
+
+          # Debug logging — helps diagnose silent deployment skips
+          echo "=============================================="
+          echo "🔍 Deployment Gate Check"
+          echo "=============================================="
+          echo "  Repository:    $REPO"
+          echo "  Event:         $EVENT"
+          echo "  Conclusion:    $CONCLUSION"
+          echo "  Trigger event: $TRIGGER_EVENT"
+          echo "  Actor:         $ACTOR"
+          echo "=============================================="
+
+          if [[ "$REPO" == "bayer-int/dd-template-repository" ]] || [[ "$REPO" == "bayer-int/dd-template-repo" ]]; then
+            REASON="template-repo"
+            echo "should-deploy=false" >> $GITHUB_OUTPUT
+            echo "skip-reason=$REASON" >> $GITHUB_OUTPUT
+            echo "codeql-failed-on-schedule=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Scheduled CodeQL scans — never redeploy, stop containers if failed
+          if [[ "$TRIGGER_EVENT" == "schedule" ]]; then
+            if [[ "$CONCLUSION" == "success" ]] || [[ "$CONCLUSION" == "neutral" ]]; then
+              REASON="scheduled-scan-passed"
+              echo "codeql-failed-on-schedule=false" >> $GITHUB_OUTPUT
+            else
+              REASON="scheduled-scan-failed"
+              echo "codeql-failed-on-schedule=true" >> $GITHUB_OUTPUT
+            fi
+            echo "should-deploy=false" >> $GITHUB_OUTPUT
+            echo "skip-reason=$REASON" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Allow "success" and "neutral" (CodeQL with no findings)
+          if [[ "$EVENT" == "workflow_run" ]] && [[ "$CONCLUSION" != "success" ]] && [[ "$CONCLUSION" != "neutral" ]]; then
+            REASON="codeql-failed (conclusion: $CONCLUSION)"
+            echo "should-deploy=false" >> $GITHUB_OUTPUT
+            echo "skip-reason=$REASON" >> $GITHUB_OUTPUT
+            echo "codeql-failed-on-schedule=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "should-deploy=true" >> $GITHUB_OUTPUT
+          echo "skip-reason=" >> $GITHUB_OUTPUT
+          echo "codeql-failed-on-schedule=false" >> $GITHUB_OUTPUT
+          echo "✅ All checks passed — deploying"
+
+      - name: Write skip summary
+        if: steps.check.outputs.should-deploy == 'false'
+        run: |
+          REASON="${{ steps.check.outputs.skip-reason }}"
+          {
+            echo "## Deployment Skipped"
+            echo ""
+            if [[ "$REASON" == "scheduled-scan-passed" ]]; then
+              echo "**Reason:** Scheduled CodeQL scan passed. No redeployment needed (no code changed)."
+            elif [[ "$REASON" == "scheduled-scan-failed" ]]; then
+              echo "**Reason:** Scheduled CodeQL scan **FAILED**."
+              echo ""
+              echo "⛔ Containers will be stopped to prevent running vulnerable code."
+              echo "Fix the security findings and push to redeploy."
+            elif [[ "$REASON" =~ ^codeql-failed ]]; then
+              echo "**Reason:** CodeQL security scan did not pass."
+              echo ""
+              echo "Deployment is blocked until CodeQL completes successfully."
+              echo "Check the **CodeQL** workflow run for details on security findings."
+            elif [[ "$REASON" == "template-repo" ]]; then
+              echo "**Reason:** This is the template repository — deployment is disabled."
+            fi
+          } >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # Stop: if scheduled CodeQL failed, stop containers and block redeployment
+  # ---------------------------------------------------------------------------
+  stop-on-security-failure:
+    name: Stop containers (security failure)
+    needs: gate
+    if: needs.gate.outputs.codeql-failed-on-schedule == 'true'
+    uses: bayer-int/dd-platform-repository/.github/workflows/stop-project.yml@master
+    with:
+      project-name: ${{ github.event.repository.name }}
+      reason: "Scheduled CodeQL security scan failed"
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: "arn:aws:iam::992872368362:role/vibe-platform-github-deploy"
+
+  # ---------------------------------------------------------------------------
+  # Deploy to ECS (frontend-only or full-stack; needs frontend/Dockerfile or backend/Dockerfile)
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to ECS
+    needs: gate
+    if: needs.gate.outputs.should-deploy == 'true'
+    uses: bayer-int/dd-platform-repository/.github/workflows/deploy-demo.yml@master
+    with:
+      project-name: ${{ github.event.repository.name }}
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: "arn:aws:iam::992872368362:role/vibe-platform-github-deploy"
+      APP_OPENAI_KEY: ${{ secrets.APP_OPENAI_KEY }}
+      APP_DATABASE_URL: ${{ secrets.APP_DATABASE_URL }}
+      APP_API_KEY: ${{ secrets.APP_API_KEY }}
+      APP_API_SECRET: ${{ secrets.APP_API_SECRET }}
+      APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+      APP_WEBHOOK_SECRET: ${{ secrets.APP_WEBHOOK_SECRET }}
+      APP_ENCRYPTION_KEY: ${{ secrets.APP_ENCRYPTION_KEY }}
+      APP_SECRET_1: ${{ secrets.APP_SECRET_1 }}
+      APP_SECRET_2: ${{ secrets.APP_SECRET_2 }}
+      APP_SECRET_3: ${{ secrets.APP_SECRET_3 }}
+
+  # Summary is handled by the platform workflow (deploy-demo.yml) which has
+  # richer info (database host, PAPI role, etc.). No duplicate summary needed here.
+
+  # ---------------------------------------------------------------------------
+  # STATIC DEPLOYMENT (DevOps Docs) - COMMENTED OUT until we have more info
+  # or own-AWS static hosting. Uncomment the block below to re-enable.
+  # ---------------------------------------------------------------------------
+  # detect:
+  #   name: Detect stack
+  #   runs-on: ubuntu-latest
+  #   needs: gate
+  #   if: needs.gate.outputs.should-deploy == 'true'
+  #   outputs:
+  #     deployment-type: ${{ steps.detect.outputs.deployment-type }}
+  #     frontend-type: ${{ steps.detect.outputs.frontend-type }}
+  #     has-backend: ${{ steps.detect.outputs.has-backend }}
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #     - name: Detect project stack
+  #       id: detect
+  #       run: |
+  #         HAS_BACKEND="false"
+  #         if [[ -f "backend/Dockerfile" ]] && grep -qE "^FROM " "backend/Dockerfile" 2>/dev/null; then
+  #           HAS_BACKEND="true"
+  #         fi
+  #         FRONTEND_TYPE="none"
+  #         if [[ -d "frontend" ]]; then
+  #           if [[ -f "frontend/package.json" ]]; then
+  #             FRONTEND_TYPE="react"
+  #           elif [[ -f "frontend/index.html" ]]; then
+  #             FRONTEND_TYPE="vanilla"
+  #           fi
+  #         fi
+  #         if [[ "$HAS_BACKEND" == "true" ]]; then
+  #           echo "deployment-type=ecs" >> $GITHUB_OUTPUT
+  #         elif [[ "$FRONTEND_TYPE" != "none" ]]; then
+  #           echo "deployment-type=static" >> $GITHUB_OUTPUT
+  #         else
+  #           echo "::error::No deployable content (need frontend/ or backend/Dockerfile)"
+  #           exit 1
+  #         fi
+  #         echo "frontend-type=$FRONTEND_TYPE" >> $GITHUB_OUTPUT
+  #         echo "has-backend=$HAS_BACKEND" >> $GITHUB_OUTPUT
+  #
+  # build-static:
+  #   name: Build site
+  #   runs-on: ubuntu-latest
+  #   needs: detect
+  #   if: needs.detect.outputs.deployment-type == 'static'
+  #   env:
+  #     VITE_BASE_PATH: ${{ format('/-/{0}/', github.event.repository.name) }}
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #     - name: Prepare site (vanilla)
+  #       if: needs.detect.outputs.frontend-type == 'vanilla'
+  #       run: |
+  #         mkdir -p site
+  #         cp -r frontend/* site/
+  #     - name: Setup Node.js
+  #       if: needs.detect.outputs.frontend-type == 'react'
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "22"
+  #     - name: Build React and prepare site
+  #       if: needs.detect.outputs.frontend-type == 'react'
+  #       run: |
+  #         mkdir -p site
+  #         cd frontend
+  #         if [ -f package-lock.json ]; then npm ci; else npm install; fi
+  #         npm run build
+  #         cp -r dist/* ../site/
+  #     - name: Upload site artifact
+  #       uses: actions/upload-artifact@v5
+  #       with:
+  #         name: site
+  #         path: site/
+  #
+  # deploy-static:
+  #   name: Publish to DevOps Docs
+  #   needs: [detect, build-static]
+  #   if: |
+  #     always() &&
+  #     needs.detect.outputs.deployment-type == 'static' &&
+  #     (needs.build-static.result == 'success' || needs.build-static.result == 'skipped')
+  #   permissions:
+  #     contents: write
+  #     deployments: write
+  #     id-token: write
+  #     pull-requests: write
+  #   uses: bayer-int/actions-workflows/.github/workflows/publish-docs.yml@main
+  #   with:
+  #     artifact: site
+  #     dir: site
+  #     preview: ${{ (github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master') && github.run_id || '' }}
+  #     spa: ${{ needs.detect.outputs.frontend-type == 'react' }}

@@ -1,0 +1,80 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  Cursor AI — Files blocked from reading and indexing            ║
+# ║  These files cannot be accessed or modified by Cursor.          ║
+# ║  Only a human may edit this file.                               ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+# ==========================================================
+# SELF-PROTECTING — AI cannot modify these security files
+# ==========================================================
+.gitignore
+.clineignore
+.cursorignore
+.copilotignore
+.git/hooks/
+scripts/pre-commit-security-check.sh
+scripts/install-hooks.sh
+
+# ==========================================================
+# GITHUB WORKFLOWS — Platform-managed, do not modify
+# AI can create NEW workflows but must not touch these
+# ==========================================================
+.github/workflows/deploy.yml
+.github/workflows/template-sync.yml
+.github/workflows/version-bump.yml
+.github/workflows/dependabot-auto-merge.yml
+
+# ==========================================================
+# ENVIRONMENT FILES & SECRETS
+# ==========================================================
+*.env
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.secret
+credentials.json
+service-account*.json
+secrets/
+.secrets/
+
+# ==========================================================
+# DATA FILES — May contain sensitive content
+# ==========================================================
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.csv
+*.tsv
+*.parquet
+*.avro
+*.sqlite
+*.sqlite3
+*.db
+
+# ==========================================================
+# EXCEPTION: context/ folder — AI CAN read files here
+# Users share reference data via context/ for AI to analyze.
+# AI may read these but must NEVER copy real data into
+# tracked files. See .clinerules/19-sensitive-files.md
+# ==========================================================
+!context/
+!context/**
+
+# ==========================================================
+# DATA DIRECTORIES
+# ==========================================================
+data/
+uploads/
+exports/
+database/seed/
+db_data/
+local-data/
