@@ -1,14 +1,13 @@
-# ============================================================================
-# Vanilla Frontend (HTML/CSS/JS) - SECURE
-# ============================================================================
-# Serves static files with nginx as non-root user
-# ============================================================================
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
 
 FROM nginx:alpine
 
-# ============================================
-# SECURITY: Create non-root user
-# ============================================
+# Install curl (required for ECS health checks) and create non-root user
 RUN apk add --no-cache curl && \
     addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup && \
@@ -18,11 +17,9 @@ RUN apk add --no-cache curl && \
     touch /var/run/nginx.pid && \
     chown appuser:appgroup /var/run/nginx.pid
 
-# Copy static files and nginx config
-COPY --chown=appuser:appgroup . /usr/share/nginx/html
-COPY --chown=appuser:appgroup nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Switch to non-root user
 USER appuser
 
 EXPOSE 8080
