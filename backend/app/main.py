@@ -15,6 +15,9 @@ from app.seed import seed_data, REFERENCE_DATA
 from app.validator import validate_output
 
 app = FastAPI(title="CSC&E Output Validator", version="2.0")
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 # Serve static files
 static_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
