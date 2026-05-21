@@ -438,3 +438,56 @@ function escapeHtml(str) {
     div.textContent = str;
     return div.innerHTML;
 }
+
+
+// ===========================================================
+// ADD THIS TO static/app.js (at the end of the file)
+// ===========================================================
+
+function importExcel() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".xlsx,.xls";
+
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        showToast("Importing " + file.name + "...", "info");
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await fetch("/api/import", {
+                method: "POST",
+                body: formData,
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                showToast("Import failed: " + (data.detail || "Unknown error"), "error");
+                return;
+            }
+
+            showToast(data.message, "success");
+
+            // Show details
+            if (data.sheets && data.sheets.length > 0) {
+                let details = "Import details:\n";
+                data.sheets.forEach(s => {
+                    details += `  ${s.squad}: ${s.count} outputs\n`;
+                });
+                console.log(details);
+            }
+
+            await loadOutputs();
+        } catch (e) {
+            showToast("Import error: " + e.message, "error");
+        }
+    };
+
+    input.click();
+}
+

@@ -177,4 +177,191 @@ async def export_csv(squad: str = None):
         media_type="text/csv",
     )
     response.headers["Content-Disposition"] = "attachment; filename=csce_outputs.csv"
+    
+    
+    
+# ===========================================================
+# ADD THIS TO app/main.py (at the end, before the last line)
+# ===========================================================
+
+from fastapi import UploadFile, File
+import openpyxl
+import math
+import tempfile
+
+# Sheet name to squad mapping
+SHEET_SQUAD_MAP = {
+    "Platform_Excellence": "Platform Excellence",
+    "Platform Excellence": "Platform Excellence",
+    "Human_Centric": "Human Centric Cyber Security",
+    "Human Centric": "Human Centric Cyber Security",
+    "Living_Security": "Living Security at Bayer",
+    "Living Security": "Living Security at Bayer",
+    "CSO_Greater China": "CSO - Greater China",
+    "CSO_Greater_China": "CSO - Greater China",
+    "CSO - Greater China": "CSO - Greater China",
+    "CSO_Americas": "CSO - Americas",
+    "CSO - Americas": "CSO - Americas",
+    "CSO_EMEA": "CSO - EMEA",
+    "CSO - EMEA": "CSO - EMEA",
+    "CSO_APAC": "CSO - APAC",
+    "CSO - APAC": "CSO - APAC",
+}
+
+SKIP_SHEETS = [
+    "Setup Instructions", "Data Entry", "Reference Data", "Summary",
+    "Dashboard", "Sheet1", "Sheet2", "Sheet3", "Instructions",
+    "Lookup", "Lists", "Config",
+]
+
+COLUMN_MAP = {
+    "csf outcome": "csf_outcome",
+    "csce outcome": "csce_outcome",
+    "measure": "measure",
+    "output keyword": "output_keyword",
+    "output": "output",
+    "impact": "impact",
+    "quarter": "quarter",
+    "year": "year",
+    "priority": "priority",
+    "metric baseline": "metric_baseline",
+    "metric value": "metric_value",
+    "metric target": "metric_target",
+    "output status": "output_status",
+    "checkpoint status": "checkpoint_status",
+    "checkpoint description": "checkpoint_description",
+    "risk": "risk",
+    "risks": "risk",
+    "issue": "issue",
+    "issues": "issue",
+    "owner": "owner",
+    "platform": "platform",
+    "squad": "squad",
+    "country": "country",
+    "region": "region",
+    "division": "division",
+    "status notes": "status_notes",
+    "notes": "status_notes",
+    "status": "output_status",
+    "keyword": "output_keyword",
+}
+
+
+def clean_val(val):
+    if val is None:
+        return ""
+    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+        return ""
+    if isinstance(val, (int, float)):
+        return val
+    return str(val).strip()
+
+
+@app.post("/api/import")
+async def import_excel(file: UploadFile = File(...)):
+    """Import Excel file via web upload."""
+
+    # Save uploaded file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        wb = openpyxl.load_workbook(tmp_path, read_only=True, data_only=True)
+    except Exception as e:
+        os.unlink(tmp_path)
+        raise HTTPException(status_code=400, detail=f"Cannot read Excel file: {e}")
+
+    total = 0
+    sheets_imported = []
+
+    for sheet_name in wb.sheetnames:
+        if sheet_name in SKIP_SHEETS:
+            continue
+
+        squad_name = SHEET_SQUAD_MAP.get(sheet_name)
+        if not squad_name:
+            for key, val in SHEET_SQUAD_MAP.items():
+                if key.lower().replace("_", " ") in sheet_name.lower().replace("_", " "):
+                    squad_name = val
+                    break
+
+        if not squad_name:
+            continue
+
+        ws = wb[sheet_name]
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) < 2:
+            continue
+
+        # Find header row
+        header_idx = None
+        for i, row in enumerate(rows):
+            lower_vals = [str(v).lower().strip() if v else "" for v in row]
+            if "output" in lower_vals:
+                header_idx = i
+                break
+
+        if header_idx is None:
+            continue
+
+        headers = [str(v).lower().strip() if v else "" for v in rows[header_idx]]
+        col_indices = {}
+        for i, h in enumerate(headers):
+            if h in COLUMN_MAP and COLUMN_MAP[h] is not None:
+                db_col = COLUMN_MAP[h]
+                if db_col not in col_indices:
+                    col_indices[db_col] = i
+
+        if "output" not in col_indices:
+            continue
+
+        count = 0
+        for row in rows[header_idx + 1:]:
+            output_idx = col_indices["output"]
+            output_val = row[output_idx] if output_idx < len(row) else None
+
+            if not output_val or str(output_val).strip() == "":
+                continue
+
+            record = {"squad": squad_name}
+            for db_col, ci in col_indices.items():
+                if ci < len(row):
+                    record[db_col] = clean_val(row[ci])
+
+            record["squad"] = squad_name
+            record.setdefault("platform", "Cyber Security Culture & Enablement")
+
+            if "year" in record:
+                try:
+                    record["year"] = int(float(str(record["year"]))) if record["year"] else 2026
+                except (ValueError, TypeError):
+                    record["year"] = 2026
+
+            for nf in ["metric_baseline", "metric_value", "metric_target"]:
+                if nf in record:
+                    try:
+                        record[nf] = float(str(record[nf])) if record[nf] != "" else 0
+                    except (ValueError, TypeError):
+                        record[nf] = 0
+
+            try:
+                create_output(record)
+                count += 1
+            except Exception:
+                continue
+
+        total += count
+        sheets_imported.append({"sheet": sheet_name, "squad": squad_name, "count": count})
+
+    wb.close()
+    os.unlink(tmp_path)
+
+    return {
+        "message": f"Import complete: {total} outputs imported",
+        "total": total,
+        "sheets": sheets_imported,
+    }
+
     return response
