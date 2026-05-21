@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSC&E Output Validator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+<div class="app-layout">
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon">🛡️</div>
+                <div>
+                    <h1>CSC&E Validator</h1>
+                    <p>Output Governance Platform</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Squads</div>
+            <div class="squad-item active" data-squad="All" onclick="selectSquad(this, 'All')">
+                <div class="squad-dot"></div>
+                <span>All Teams</span>
+            </div>
+            <div id="squad-list"></div>
+        </div>
+
+        <div class="sidebar-footer">
+            <button onclick="exportCSV()">📥 Export CSV</button>
+            <button onclick="loadOutputs()">🔄 Refresh Data</button>
+        </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="main-content">
+
+        <!-- Header -->
+        <div class="page-header">
+            <div>
+                <h2>Output Tracking</h2>
+            </div>
+            <div class="header-actions">
+                <span class="squad-badge" id="current-squad-badge">All Teams</span>
+                <button class="btn btn-primary" onclick="openCreateModal()">
+                    ➕ New Output
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-label">Total Outputs</div>
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-sub">across selected squad</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">AI Validated</div>
+                <div class="stat-value" id="stat-validated">0</div>
+                <div class="stat-sub">outputs checked</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Valid Rate</div>
+                <div class="stat-value" id="stat-valid-rate">—</div>
+                <div class="stat-sub">of validated outputs</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Not Validated</div>
+                <div class="stat-value" id="stat-not-validated">0</div>
+                <div class="stat-sub">pending review</div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container" style="position:relative;">
+            <div class="table-header">
+                <h3>Outputs</h3>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="text" id="search-input" placeholder="Search outputs..." 
+                           style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:220px;"
+                           oninput="filterTable()">
+                </div>
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Output</th>
+                            <th>Squad</th>
+                            <th>CSCE Outcome</th>
+                            <th>Quarter</th>
+                            <th>Status</th>
+                            <th>AI Validation</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="outputs-table"></tbody>
+                </table>
+            </div>
+            <div id="empty-state" class="empty-state" style="display:none;">
+                <div class="empty-icon">📋</div>
+                <h3>No outputs yet</h3>
+                <p>Click "New Output" to add your first CSC&E output.</p>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- ===== CREATE/EDIT MODAL ===== -->
+<div class="modal-overlay" id="output-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modal-title">New Output</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="output-form">
+                <input type="hidden" id="form-id">
+                <div class="form-grid">
+
+                    <!-- Strategic Alignment -->
+                    <div class="form-section-title">🎯 Strategic Alignment</div>
+
+                    <div class="form-group">
+                        <label>CSF Outcome <span class="req">*</span></label>
+                        <select id="form-csf_outcome"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>CSCE Outcome <span class="req">*</span></label>
+                        <select id="form-csce_outcome"></select>
+                    </div>
+
+                    <!-- Output Definition -->
+                    <div class="form-section-title">📝 Output Definition</div>
+
+                    <div class="form-group">
+                        <label>Output Keyword</label>
+                        <input type="text" id="form-output_keyword" placeholder="e.g. Dashboard, HRM, Playbook">
+                    </div>
+                    <div class="form-group">
+                        <label>Owner <span class="req">*</span></label>
+                        <input type="text" id="form-owner" placeholder="Name(s)">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Output <span class="req">*</span></label>
+                        <textarea id="form-output" placeholder="Full description of the deliverable" rows="3"></textarea>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Measure <span class="req">*</span></label>
+                        <textarea id="form-measure" placeholder="How success will be measured" rows="2"></textarea>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Impact</label>
+                        <textarea id="form-impact" placeholder="Business / security impact" rows="2"></textarea>
+                    </div>
+
+                    <!-- Timing & Metrics -->
+                    <div class="form-section-title">📊 Timing & Metrics</div>
+
+                    <div class="form-group">
+                        <label>Quarter <span class="req">*</span></label>
+                        <select id="form-quarter"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Year</label>
+                        <input type="number" id="form-year" value="2026">
+                    </div>
+                    <div class="form-group">
+                        <label>Priority</label>
+                        <select id="form-priority"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Metric Baseline</label>
+                        <input type="number" id="form-metric_baseline" value="0" step="any">
+                    </div>
+                    <div class="form-group">
+                        <label>Metric Value</label>
+                        <input type="number" id="form-metric_value" value="0" step="any">
+                    </div>
+                    <div class="form-group">
+                        <label>Metric Target</label>
+                        <input type="number" id="form-metric_target" value="1" step="any">
+                    </div>
+
+                    <!-- Status -->
+                    <div class="form-section-title">🚦 Status</div>
+
+                    <div class="form-group">
+                        <label>Output Status</label>
+                        <select id="form-output_status"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Checkpoint Status</label>
+                        <select id="form-checkpoint_status">
+                            <option value="">—</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Checkpoint Description</label>
+                        <textarea id="form-checkpoint_description" rows="2" placeholder="Details if at risk..."></textarea>
+                    </div>
+
+                    <!-- Risks -->
+                    <div class="form-section-title">⚠️ Risks & Issues</div>
+
+                    <div class="form-group">
+                        <label>Risk</label>
+                        <textarea id="form-risk" rows="2" placeholder="Uncertain event that could affect objectives..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Issue</label>
+                        <textarea id="form-issue" rows="2" placeholder="Current problem affecting progress..."></textarea>
+                    </div>
+
+                    <!-- Ownership -->
+                    <div class="form-section-title">🏢 Ownership & Classification</div>
+
+                    <div class="form-group">
+                        <label>Squad <span class="req">*</span></label>
+                        <select id="form-squad"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Country</label>
+                        <select id="form-country"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Region</label>
+                        <select id="form-region"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Division</label>
+                        <select id="form-division"></select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Status Notes</label>
+                        <textarea id="form-status_notes" rows="2" placeholder="Any relevant notes..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Validation Result -->
+                <div id="validation-result" class="validation-result">
+                    <div class="vr-header">
+                        <span class="vr-icon" id="vr-icon"></span>
+                        <span class="vr-status" id="vr-status"></span>
+                    </div>
+                    <div class="vr-grid">
+                        <div class="vr-field"><span>Alignment:</span> <strong id="vr-alignment"></strong></div>
+                        <div class="vr-field"><span>Outcome:</span> <strong id="vr-outcome"></strong></div>
+                        <div class="vr-field"><span>Business Value:</span> <strong id="vr-bv"></strong></div>
+                        <div class="vr-field"><span>Output Quality:</span> <strong id="vr-quality"></strong></div>
+                    </div>
+                    <div class="vr-field" style="margin-top:10px;"><span>Comment:</span> <strong id="vr-comment"></strong></div>
+                    <div id="vr-suggestion-box" class="vr-suggestion" style="display:none;">
+                        <strong>💡 Suggestion:</strong>
+                        <span id="vr-suggestion"></span>
+                    </div>
+                </div>
+
+                <!-- Loading overlay for validation -->
+                <div class="loading-overlay" id="validate-loading">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Validating with AI...</div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <div>
+                <button type="button" class="btn btn-validate" onclick="validateCurrentOutput()">
+                    🤖 Validate Output
+                </button>
+            </div>
+            <div class="modal-footer-right">
+                <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveOutput()">💾 Save Output</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

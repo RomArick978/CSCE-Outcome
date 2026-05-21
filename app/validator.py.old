@@ -1,0 +1,144 @@
+import os
+import json
+import httpx
+from dotenv import load_dotenv
+from app.prompt import SYSTEM_PROMPT, build_user_prompt
+
+load_dotenv()
+
+AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY", "")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+
+
+async def validate_output(output: str, measure: str, impact: str) -> dict:
+    """Call Azure OpenAI to validate a CSC&E output."""
+
+    if not AZURE_OPENAI_KEY or not AZURE_OPENAI_ENDPOINT:
+        return _fallback_validation(output, measure, impact)
+
+    url = (
+        f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_OPENAI_DEPLOYMENT}"
+        f"/chat/completions?api-version={AZURE_OPENAI_API_VERSION}"
+    )
+
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": AZURE_OPENAI_KEY,
+    }
+
+    payload = {
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_user_prompt(output, measure, impact)},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 800,
+        "response_format": {"type": "json_object"},
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            result = json.loads(content)
+            return result
+    except Exception as e:
+        print(f"Azure OpenAI error: {e}")
+        return _fallback_validation(output, measure, impact)
+
+
+def _fallback_validation(output: str, measure: str, impact: str) -> dict:
+    """Simple rule-based fallback when Azure OpenAI is not available."""
+
+    output_lower = output.lower().strip()
+    measure_lower = (measure or "").lower().strip()
+    impact_lower = (impact or "").lower().strip()
+
+    # Activity detection keywords
+    activity_keywords = [
+        "attend", "meeting", "follow up", "follow-up", "coordinate",
+        "check email", "prepare slides", "call with", "discuss",
+        "review status", "weekly report", "catch up", "sync",
+    ]
+
+    # Deliverable keywords
+    deliverable_keywords = [
+        "develop", "deploy", "implement", "launch", "create", "build",
+        "deliver", "establish", "design", "rollout", "roll out",
+        "complete", "conduct", "execute", "integrate", "remediate",
+        "train", "pilot", "propose", "define", "standardize",
+    ]
+
+    # Outcome mapping keywords
+    outcome_map = {
+        "Culture": ["awareness", "phishing", "training", "campaign", "onboarding", "culture"],
+        "Talent & Platform Excellence": ["dashboard", "power bi", "automation", "tool", "platform", "tracking", "ai", "bootcamp"],
+        "License to Operate": ["compliance", "audit", "regulatory", "nis2", "iso27001", "mlps", "dpdp", "pipl", "filing", "certificate"],
+        "Security-by-Design": ["secure development", "security consulting", "genai", "sdlc", "controls"],
+        "Stakeholder Engagement": ["stakeholder", "workshop", "site visit", "collaboration", "partnership"],
+        "CSF Capability Delivery & Footprint": ["vulnerability", "bitsight", "firewall", "idnow", "ot security", "remote maintenance"],
+    }
+
+    # Check if activity
+    is_activity = any(kw in output_lower for kw in activity_keywords)
+    is_deliverable = any(kw in output_lower for kw in deliverable_keywords)
+
+    # Find outcome
+    matched_outcome = "None"
+    for outcome, keywords in outcome_map.items():
+        if any(kw in output_lower for kw in keywords):
+            matched_outcome = outcome
+            break
+
+    # Evaluate
+    if is_activity and not is_deliverable:
+        return {
+            "status": "Reject",
+            "alignment": "Not aligned",
+            "outcome": "None",
+            "business_value": "Low",
+            "output_quality": "Activity",
+            "comment": "This appears to be an activity rather than a concrete deliverable.",
+            "suggestion": "Reframe as a measurable deliverable, e.g.: Develop and implement [specific output] to [specific impact]",
+        }
+
+    has_measure = len(measure_lower) > 10
+    has_impact = len(impact_lower) > 10
+
+    if not is_deliverable or matched_outcome == "None":
+        return {
+            "status": "Improve",
+            "alignment": "Weak" if matched_outcome != "None" else "Not aligned",
+            "outcome": matched_outcome,
+            "business_value": "Medium" if has_impact else "Low",
+            "output_quality": "Unclear",
+            "comment": "The output is not clearly defined as a deliverable or lacks outcome alignment.",
+            "suggestion": "Rewrite with a clear verb (Develop/Deploy/Launch) + specific deliverable + expected impact.",
+        }
+
+    bv = "High" if has_impact and has_measure else ("Medium" if has_impact or has_measure else "Low")
+
+    if bv == "Low":
+        return {
+            "status": "Improve",
+            "alignment": "Aligned",
+            "outcome": matched_outcome,
+            "business_value": bv,
+            "output_quality": "Valid Output",
+            "comment": "The output is a valid deliverable but lacks clear measure and impact definitions.",
+            "suggestion": "Add a specific success measure and describe the business/security impact.",
+        }
+
+    return {
+        "status": "Valid",
+        "alignment": "Aligned",
+        "outcome": matched_outcome,
+        "business_value": bv,
+        "output_quality": "Valid Output",
+        "comment": "Strong deliverable with clear outcome alignment and business value.",
+        "suggestion": "",
+    }

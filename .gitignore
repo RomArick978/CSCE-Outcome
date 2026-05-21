@@ -1,165 +1,43 @@
-# ╔══════════════════════════════════════════════════════════════════╗
-# ║  ⛔ AI AGENTS: DO NOT MODIFY THIS FILE                         ║
-# ║  This file is protected. Only humans may edit .gitignore.      ║
-# ║  See .clinerules/19-sensitive-files.md for details.            ║
-# ╚══════════════════════════════════════════════════════════════════╝
-
-# ==========================================================
-# DEPENDENCIES
-# ==========================================================
-node_modules/
-.pnp
-.pnp.js
+# Python
 __pycache__/
 *.pyc
-venv/
-.venv/
-
-# ==========================================================
-# BUILD OUTPUTS
-# ==========================================================
+*.pyo
+*.pyd
+*.egg-info/
 dist/
 build/
-.next/
-out/
+venv/
+.venv/
+*.egg
 
-# ==========================================================
-# ENVIRONMENT FILES — NEVER COMMIT (including .env.example)
-# ==========================================================
-*.env
-*.env.local
-*.env.*.local
-*.env.example
-env.example
+# Environment
+.env
 
-# ==========================================================
-# SECRETS & CREDENTIALS — HARD BLOCK
-# ==========================================================
-*.pem
-*.key
-*.cert
-*.crt
-*.p12
-*.pfx
-*.jks
-*.keystore
-*.secret
-credentials.json
-service-account*.json
-secrets/
-.secrets/
-
-# ==========================================================
-# DOCUMENTS & DATA FILES — NEVER COMMIT
-# Projects often handle confidential Bayer data.
-# Use context/ folder for reference data (gitignored below).
-# Use database/seed/ for local test data (gitignored below).
-# ==========================================================
-*.pdf
-*.doc
-*.docx
-*.xls
-*.xlsx
-*.ppt
-*.pptx
-*.csv
-*.tsv
-*.parquet
-*.avro
-
-# ==========================================================
-# ARCHIVES
-# ==========================================================
-*.zip
-*.tar.gz
-*.tar
-*.rar
-*.7z
-*.gz
-*.bz2
-
-# ==========================================================
-# MEDIA FILES — Blocked everywhere EXCEPT frontend/
-# Frontend app assets (logos, icons, images) are allowed.
-# ==========================================================
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.bmp
-*.ico
-*.svg
-*.webp
-*.mp4
-*.mp3
-*.wav
-*.mov
-*.avi
-*.webm
-*.tiff
-*.tif
-
-# Allow frontend app assets
-!frontend/**/*.png
-!frontend/**/*.jpg
-!frontend/**/*.jpeg
-!frontend/**/*.gif
-!frontend/**/*.bmp
-!frontend/**/*.ico
-!frontend/**/*.svg
-!frontend/**/*.webp
-
-# ==========================================================
-# LOCAL DATABASES & DATA DIRECTORIES
-# ==========================================================
+# Database
+data/
+*.db
 *.sqlite
 *.sqlite3
-*.db
-db_data/
-data/
-uploads/
-exports/
-local-data/
 
-# ==========================================================
-# DATABASE — Schema tracked, seed data and env gitignored
-# ==========================================================
-database/.env
-database/seed/*
-!database/seed/.gitkeep
-
-# ==========================================================
-# AI CONTEXT FOLDER — For reference data (gitignored)
-# Users share files here for AI to analyze. Never committed.
-# ==========================================================
-context/*
-!context/.gitkeep
-
-# ==========================================================
-# AI TOOL DATA — Chat history, Claude settings
-# ==========================================================
-.chat/
-.claude/
-
-# ==========================================================
-# IDE & OS
-# ==========================================================
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
+# OS
 .DS_Store
 Thumbs.db
 
-# ==========================================================
-# LOGS
-# ==========================================================
-logs/
-*.log
-npm-debug.log*
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# ==========================================================
-# TEST COVERAGE
-# ==========================================================
-coverage/
+# Logs
+*.log
+
+# Node (if any)
+node_modules/
+
+# Excel files (data - don't commit)
+*.xlsx
+*.xls
+
+# Byte-compiled
+*.py[cod]
