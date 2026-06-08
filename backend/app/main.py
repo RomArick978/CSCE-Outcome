@@ -1,12 +1,15 @@
 import os
 import csv
 import io
+import math
+import tempfile
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, StreamingResponse
+
+import openpyxl
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional
+
 from app.database import (
     init_db, get_all_outputs, get_output,
     create_output, update_output, delete_output, get_squads,
@@ -15,13 +18,11 @@ from app.seed import seed_data, REFERENCE_DATA
 from app.validator import validate_output
 
 app = FastAPI(title="CSC&E Output Validator", version="2.0")
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-# Serve static files
-static_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-app.mount("/static", StaticFiles(directory=static_path), name="static")
 
 
 @app.on_event("startup")
@@ -29,8 +30,6 @@ def startup():
     init_db()
     seed_data()
 
-
-# --- Pydantic Models ---
 
 class OutputCreate(BaseModel):
     csf_outcome: str = ""
@@ -69,23 +68,12 @@ class ValidateRequest(BaseModel):
     impact: str = ""
 
 
-# --- Routes ---
-
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    html_path = os.path.join(static_path, "index.html")
-    with open(html_path, "r", encoding="utf-8") as f:
-        return f.read()
-
-
-# --- API: Outputs ---
-
-@app.get("/api/outputs")
+@app.get("/outputs")
 async def list_outputs(squad: str = None):
     return get_all_outputs(squad)
 
 
-@app.get("/api/outputs/{output_id}")
+@app.get("/outputs/{output_id}")
 async def read_output(output_id: int):
     item = get_output(output_id)
     if not item:
@@ -93,13 +81,13 @@ async def read_output(output_id: int):
     return item
 
 
-@app.post("/api/outputs")
+@app.post("/outputs")
 async def add_output(data: OutputCreate):
     output_id = create_output(data.model_dump())
     return {"id": output_id, "message": "Output created"}
 
 
-@app.put("/api/outputs/{output_id}")
+@app.put("/outputs/{output_id}")
 async def edit_output(output_id: int, data: OutputUpdate):
     existing = get_output(output_id)
     if not existing:
@@ -108,7 +96,7 @@ async def edit_output(output_id: int, data: OutputUpdate):
     return {"message": "Output updated"}
 
 
-@app.delete("/api/outputs/{output_id}")
+@app.delete("/outputs/{output_id}")
 async def remove_output(output_id: int):
     existing = get_output(output_id)
     if not existing:
@@ -117,15 +105,13 @@ async def remove_output(output_id: int):
     return {"message": "Output deleted"}
 
 
-# --- API: Validate ---
-
-@app.post("/api/validate")
+@app.post("/validate")
 async def validate(req: ValidateRequest):
     result = await validate_output(req.output, req.measure, req.impact)
     return result
 
 
-@app.post("/api/outputs/{output_id}/validate")
+@app.post("/outputs/{output_id}/validate")
 async def validate_and_save(output_id: int):
     item = get_output(output_id)
     if not item:
@@ -151,17 +137,13 @@ async def validate_and_save(output_id: int):
     return result
 
 
-# --- API: Reference Data ---
-
-@app.get("/api/reference")
+@app.get("/reference")
 async def reference_data():
     squads = get_squads()
     return {**REFERENCE_DATA, "squads": [s["name"] for s in squads]}
 
 
-# --- API: Export CSV ---
-
-@app.get("/api/export")
+@app.get("/export")
 async def export_csv(squad: str = None):
     rows = get_all_outputs(squad)
     if not rows:
@@ -177,19 +159,9 @@ async def export_csv(squad: str = None):
         media_type="text/csv",
     )
     response.headers["Content-Disposition"] = "attachment; filename=csce_outputs.csv"
-    
-    
-    
-# ===========================================================
-# ADD THIS TO app/main.py (at the end, before the last line)
-# ===========================================================
+    return response
 
-from fastapi import UploadFile, File
-import openpyxl
-import math
-import tempfile
 
-# Sheet name to squad mapping
 SHEET_SQUAD_MAP = {
     "Platform_Excellence": "Platform Excellence",
     "Platform Excellence": "Platform Excellence",
@@ -257,11 +229,8 @@ def clean_val(val):
     return str(val).strip()
 
 
-@app.post("/api/import")
+@app.post("/import")
 async def import_excel(file: UploadFile = File(...)):
-    """Import Excel file via web upload."""
-
-    # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
         content = await file.read()
         tmp.write(content)
@@ -295,7 +264,6 @@ async def import_excel(file: UploadFile = File(...)):
         if len(rows) < 2:
             continue
 
-        # Find header row
         header_idx = None
         for i, row in enumerate(rows):
             lower_vals = [str(v).lower().strip() if v else "" for v in row]
@@ -363,5 +331,3 @@ async def import_excel(file: UploadFile = File(...)):
         "total": total,
         "sheets": sheets_imported,
     }
-
-    return response

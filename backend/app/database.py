@@ -1,7 +1,15 @@
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "csce.db")
+def _default_db_path():
+    if os.getenv("DATABASE_PATH"):
+        return os.getenv("DATABASE_PATH")
+    if os.path.isdir("/data"):
+        return "/data/csce.db"
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "csce.db")
+
+
+DB_PATH = _default_db_path()
 
 
 def get_db():

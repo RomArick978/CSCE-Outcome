@@ -6,7 +6,7 @@ from app.prompt import SYSTEM_PROMPT, build_user_prompt
 
 load_dotenv()
 
-MYGENASSIST_TOKEN = os.getenv("MYGENASSIST_TOKEN", "")
+MYGENASSIST_TOKEN = os.getenv("SECRET_1", os.getenv("MYGENASSIST_TOKEN", ""))
 MYGENASSIST_URL = os.getenv("MYGENASSIST_URL", "https://chat.int.bayer.com/api/v2")
 MYGENASSIST_MODEL = os.getenv("MYGENASSIST_MODEL", "claude-sonnet-4.6-azure")
 
